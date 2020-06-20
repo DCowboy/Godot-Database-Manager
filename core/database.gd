@@ -197,57 +197,110 @@ func save_db() -> void :
 		return
 
 	# print("GDDatabase::save_db() - " + m_db_name + " to: " + m_db_filepath)
-	var text = "{"
-	text += "\n\t\"" + gddb_constants.c_gddb_signature + "\":\"" + gddb_constants.c_gddb_ver + "\","
-	text += "\n\t\"db_name\":\"" + m_db_name + "\","
-	text += "\n\t\"tables\":["
+	var database = {}
+
 	for idx in range(0, m_tables.size()):
-		text += "\n\t\t{"
-		text += "\n\t\t\t\"table_name\":\"" + m_tables[idx].get_table_name() + "\","
-		text += "\n\t\t\t\"props\":["
-		for jdx in range(0, m_tables[idx].get_props_count()):
-			var db_prop = m_tables[idx].get_prop_at(jdx)
-			text += "\n\t\t\t\t\t{"
-			text += "\"name\":\"" + str(db_prop.get_prop_name()) + "\","
+		var property_count = m_tables[idx].get_props_count()
+		database[str(m_tables[idx].get_table_name())] = []
+		#first collect the table data to slice into rows.
+		#m_tables[idx].get_all_data() didn't work as I expected
+		var all_data = []
+		for jdx in range(0,  m_tables[idx].get_data_size()):
+			all_data.append(m_tables[idx].get_data_at(jdx))
+		
+		for jdx in range(0, m_tables[idx].get_data_size() / property_count):
+			var row = {}
+			#slice data into rows
+#			var all_data = m_tables[idx].get_all_data()
+			var row_data = all_data.slice(jdx * property_count, jdx * property_count + property_count - 1, 1, true)
+			#apply them to their properties
+			for kdx in range(0, property_count):
+				var db_prop = m_tables[idx].get_prop_at(kdx)
+				var prop_type = db_prop.get_prop_type()
+				row[str(db_prop.get_prop_name())] = {}
+				row[str(db_prop.get_prop_name())].type = prop_type
+				row[str(db_prop.get_prop_name())].data = row_data[kdx] #m_tables[idx].get_data_at(jdx * kdx + (kdx - 1))
+				if prop_type == GDDBTypes.e_prop_type_int:
+					row[str(db_prop.get_prop_name())].zz_auto_increment = str(int(db_prop.has_autoincrement()))
+				if(prop_type > gddb_types.e_prop_types_count):
+					var table_id = prop_type - gddb_types.e_prop_types_count
+					var table = get_table_by_id(table_id)
+					row[str(db_prop.get_prop_name())].zz_table_name = table.get_table_name()
+					row[str(db_prop.get_prop_name())].type = "table"
+			#add to dictionary
+			database[str(m_tables[idx].get_table_name())].append(row)
 
-			var prop_type = db_prop.get_prop_type()
-			if(prop_type < gddb_types.e_prop_types_count):
-				text += "\"type\":\"" + str(prop_type) + "\","
-			else:
-				# print("GDDatabase::save_db() - prop_type: " + str(prop_type))
-				var table_id = prop_type - gddb_types.e_prop_types_count
-				var table = get_table_by_id(table_id)
-				if(null == table):
-					print("GDDatabase::save_db() - table not found with id: " + str(table_id))
-				text += "\"type\":\"" + "table" + "\","
-				text += "\"table_name\":\"" + table.get_table_name() + "\","
-
-			text += "\"auto_increment\":\"" + str(int(db_prop.has_autoincrement())) + "\""
-
-			text += "}"
-			if(jdx < m_tables[idx].get_props_count() - 1):
-				text += ","
-		text += "\n\t\t\t],"
-
-		text += "\n\t\t\t\"data\":["
-		for jdx in range(0, m_tables[idx].get_data_size()):
-			#var the_data = m_tables[idx].get_data_at(jdx)
-			#print("getting data at " + str(jdx) + " : " + the_data)
-			text += "\"" + m_tables[idx].get_data_at(jdx) + "\""
-			if(jdx < m_tables[idx].get_data_size() - 1):
-				text += ","
-		text += "]" # end of data
-		text += "\n\t\t}" # end of table
-
-		if(idx < m_tables.size() - 1):
-			text += ","
-
-	text += "\n\t]\n}"
 
 	var save_file = File.new()
 	save_file.open(m_db_filepath, File.WRITE)
-	save_file.store_string(text)
+	var head = "{"
+	head += "\n\t\"" + gddb_constants.c_gddb_signature + "\":\"" + gddb_constants.c_gddb_ver + "\","
+	head += "\n\t\"db_name\":\"" + m_db_name + "\",\n"
+	save_file.store_string(head)
+	save_file.store_string("\t\"tables\":{\n")
+	for each in database:
+		save_file.store_string("\t\t\"" + str(each) + "\": [\n")
+		for every in database[each].size():
+			save_file.store_string("\t\t\t{\n")
+			for key in database[each][every]:
+				save_file.store_line("\t\t\t\t\"" + key + "\":" + to_json(database[each][every][key]) + ",")
+			save_file.store_string("\t\t\t},\n")
+		save_file.store_string("\t\t],\n")
+	save_file.store_string("\t}\n}")
 	save_file.close()
+	
+	
+#	var text = "{"
+#	text += "\n\t\"" + gddb_constants.c_gddb_signature + "\":\"" + gddb_constants.c_gddb_ver + "\","
+#	text += "\n\t\"db_name\":\"" + m_db_name + "\","
+#	text += "\n\t\"tables\":["
+#	for idx in range(0, m_tables.size()):
+#		text += "\n\t\t{"
+#		text += "\n\t\t\t\"table_name\":\"" + m_tables[idx].get_table_name() + "\","
+#		text += "\n\t\t\t\"props\":["
+#		for jdx in range(0, m_tables[idx].get_props_count()):
+#			var db_prop = m_tables[idx].get_prop_at(jdx)
+#			text += "\n\t\t\t\t\t{"
+#			text += "\"name\":\"" + str(db_prop.get_prop_name()) + "\","
+#
+#			var prop_type = db_prop.get_prop_type()
+#			if(prop_type < gddb_types.e_prop_types_count):
+#				text += "\"type\":\"" + str(prop_type) + "\","
+#			else:
+#				# print("GDDatabase::save_db() - prop_type: " + str(prop_type))
+#				var table_id = prop_type - gddb_types.e_prop_types_count
+#				var table = get_table_by_id(table_id)
+#				if(null == table):
+#					print("GDDatabase::save_db() - table not found with id: " + str(table_id))
+#				text += "\"type\":\"" + "table" + "\","
+#				text += "\"table_name\":\"" + table.get_table_name() + "\","
+#
+#			text += "\"auto_increment\":\"" + str(int(db_prop.has_autoincrement())) + "\""
+#
+#			text += "}"
+#			if(jdx < m_tables[idx].get_props_count() - 1):
+#				text += ","
+#		text += "\n\t\t\t],"
+#
+#		text += "\n\t\t\t\"data\":["
+#		for jdx in range(0, m_tables[idx].get_data_size()):
+#			#var the_data = m_tables[idx].get_data_at(jdx)
+#			#print("getting data at " + str(jdx) + " : " + the_data)
+#			text += "\"" + m_tables[idx].get_data_at(jdx) + "\""
+#			if(jdx < m_tables[idx].get_data_size() - 1):
+#				text += ","
+#		text += "]" # end of data
+#		text += "\n\t\t}" # end of table
+#
+#		if(idx < m_tables.size() - 1):
+#			text += ","
+#
+#	text += "\n\t]\n}"
+#
+#	var save_file = File.new()
+#	save_file.open(m_db_filepath, File.WRITE)
+#	save_file.store_string(text)
+#	save_file.close()
 
 	set_dirty(false)
 
@@ -272,39 +325,61 @@ func load_db() -> int :
 	clear()
 	m_db_name = dictionary["db_name"]
 	var tables = dictionary["tables"]
-	for idx in range(0, tables.size()):
-		var table_id = add_table(tables[idx]["table_name"])
+	for idx in tables:
+		var table_id = add_table(idx)
 		var table = get_table_by_id(table_id)
-
-		var props_count = tables[idx]["props"].size()
-		if(props_count == 0):
-			continue
-	
-		for jdx in range(0, props_count):
-			var prop_type = tables[idx]["props"][jdx]["type"]
-
-			var prop_id = -1
-			if(prop_type == "table"):
-				var table_name = tables[idx]["props"][jdx]["table_name"]
-				prop_id = table.add_table_prop(tables[idx]["props"][jdx]["name"], table_name)
-			else:
-				prop_id = table.add_prop(int(prop_type), tables[idx]["props"][jdx]["name"])
-
-			var prop = table.get_prop_by_id(prop_id)
-			var enable_autoincrement = tables[idx]["props"][jdx]["auto_increment"].to_int()
-			prop.enable_autoincrement(bool(enable_autoincrement))
-	
-		var data_count = tables[idx]["data"].size()
-		#print("********* set data to db - begin")
-		for jdx in range(0, data_count / props_count):
+		for row in tables[idx].size():
 			var row_data = []
-			for kdx in range(0, props_count):
-				var cell_data = tables[idx]["data"][jdx * props_count + kdx]
-				# print("cell_data: " + cell_data)
-				row_data.push_back(cell_data)
-			#print("row_data: " + str(row_data))
+			for property in tables[idx][row]:
+				print(table.get_props_count())
+				if table.get_props_count() < tables[idx][row].size():
+					var prop_type = tables[idx][row][property].type
+					var prop_id = -1
+					if str(prop_type) == "table": 
+						var table_name = tables[idx][row][property].zz_table_name
+						prop_id = table.add_table_prop(property, table_name)
+					else:
+						prop_id = table.add_prop(int(prop_type), property)
+						if prop_type == GDDBTypes.e_prop_type_int:
+							var prop = table.get_prop_by_id(prop_id)
+							var enable_autoincrement = tables[idx][row][property].zz_auto_increment.to_int()
+							prop.enable_autoincrement(bool(enable_autoincrement))
+				row_data.append(tables[idx][row][property].data)
 			table.add_row(row_data)
-		#print("********* set data to db - end")
+#				pass
+#	for idx in range(0, tables.size()):
+#		var table_id = add_table(tables[idx]["table_name"])
+#		var table = get_table_by_id(table_id)
+##
+#		var props_count = tables[idx]["props"].size()
+#		if(props_count == 0):
+#			continue
+#
+#		for jdx in range(0, props_count):
+#			var prop_type = tables[idx]["props"][jdx]["type"]
+#
+#			var prop_id = -1
+#			if(prop_type == "table"):
+#				var table_name = tables[idx]["props"][jdx]["table_name"]
+#				prop_id = table.add_table_prop(tables[idx]["props"][jdx]["name"], table_name)
+#			else:
+#				prop_id = table.add_prop(int(prop_type), tables[idx]["props"][jdx]["name"])
+#
+#			var prop = table.get_prop_by_id(prop_id)
+#			var enable_autoincrement = tables[idx]["props"][jdx]["auto_increment"].to_int()
+#			prop.enable_autoincrement(bool(enable_autoincrement))
+#
+#		var data_count = tables[idx]["data"].size()
+#		#print("********* set data to db - begin")
+#		for jdx in range(0, data_count / props_count):
+#			var row_data = []
+#			for kdx in range(0, props_count):
+#				var cell_data = tables[idx]["data"][jdx * props_count + kdx]
+#				# print("cell_data: " + cell_data)
+#				row_data.push_back(cell_data)
+#			#print("row_data: " + str(row_data))
+#			table.add_row(row_data)
+#		#print("********* set data to db - end")
 
 	# link custom data to tables
 	for idx in range(0, m_tables.size()):
